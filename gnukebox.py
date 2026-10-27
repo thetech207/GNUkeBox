@@ -17,15 +17,17 @@ import sys
 from PyQt5.QtCore import (QEvent, QSize, QStringListModel, Qt, QThread, QTimer,
                           QUrl, pyqtSignal)
 from PyQt5.QtGui import (QColor, QFont, QIcon, QKeySequence, QLinearGradient,
-                         QPainter, QPixmap)
-from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
+                         QPainter, QPen, QPixmap)
+from PyQt5.QtMultimedia import (QMediaContent, QMediaPlayer,
+                                QMultimedia)
 from PyQt5.QtWidgets import (QAbstractItemView, QApplication, QCheckBox,
                              QCompleter, QFileDialog, QFrame, QGroupBox,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit,
-                             QListWidget, QMainWindow, QMenu, QPushButton,
-                             QSizePolicy, QSlider, QSplitter, QStackedWidget,
-                             QStyle, QTableWidget, QTableWidgetItem,
-                             QToolButton, QVBoxLayout, QWidget)
+                             QListWidget, QMainWindow, QMenu, QMessageBox,
+                             QPushButton, QSizePolicy, QSlider, QSplitter,
+                             QStackedWidget, QStyle, QTableWidget,
+                             QTableWidgetItem, QToolButton, QVBoxLayout,
+                             QWidget)
 
 from library import AUDIO_EXTS, Library, TAG_FIELDS, extract_art, read_tags
 
@@ -106,6 +108,25 @@ def save_config(cfg):
 def fmt_time(ms):
     s = max(0, int(ms // 1000))
     return '%d:%02d' % (s // 60, s % 60)
+
+
+def shuffle_icon(color='#d6d6dc'):
+    """Classic two-crossing-arrows shuffle glyph, drawn to a pixmap."""
+    pm = QPixmap(32, 32)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(QPen(QColor(color), 2, Qt.SolidLine, Qt.RoundCap))
+    p.drawLine(3, 9, 10, 9)     # top-left in
+    p.drawLine(10, 9, 20, 23)   # cross down
+    p.drawLine(3, 23, 10, 23)   # bottom-left in
+    p.drawLine(10, 23, 20, 9)   # cross up
+    for y in (9, 23):           # shafts + arrowheads on the right
+        p.drawLine(20, y, 27, y)
+        p.drawLine(21, y - 4, 28, y)
+        p.drawLine(21, y + 4, 28, y)
+    p.end()
+    return QIcon(pm)
 
 
 def placeholder_art(size):
@@ -204,6 +225,8 @@ class MainWindow(QMainWindow):
         self._ph = placeholder_art(512)
         self.scanner = None
         self._last_filters = {}
+        self._shuffle_played = set()   # queue indices already shuffled
+        self._err_streak = 0           # consecutive playback errors
 
         self.setWindowTitle(APP)
         self.setWindowIcon(self._app_icon())
@@ -217,6 +240,7 @@ class MainWindow(QMainWindow):
                                      % self.lib.count())
 
         self._wire_player()
+        QTimer.singleShot(600, self._check_service)
         self._apply_volume(self.cfg.get('volume', 80))
         self.shuffle_btn.setChecked(bool(self.cfg.get('shuffle')))
         self._load_folder_list()
@@ -379,8 +403,10 @@ class MainWindow(QMainWindow):
 
         ctl = QHBoxLayout()
         self.shuffle_btn = self._mk_btn(
-            QStyle.SP_BrowserReload, 'Shuffle play order', checkable=True)
-        self.shuffle_btn.toggled.connect(self._shuffle_toggled)
+            QStyle.SP_BrowserReload,
+            'Shuffle — play the playlist in random order', checkable=True)
+        self.shuffle_btn.setIcon(shuffle_icon())
+        self.shuffle_btn.toggled.connect(self._set_shuffle)
         self.prev_btn = self._mk_btn(QStyle.SP_MediaSkipBackward,
                                      'Previous', self.prev)
         self.play_btn = self._mk_btn(QStyle.SP_MediaPlay,
@@ -486,6 +512,14 @@ class MainWindow(QMainWindow):
 
         ctl = QHBoxLayout()
         ctl.addStretch(1)
+        self.fs_shuffle = self._mk_btn(
+            QStyle.SP_BrowserReload,
+            'Shuffle — play the playlist in random order', checkable=True)
+        self.fs_shuffle.setIcon(shuffle_icon())
+        self.fs_shuffle.toggled.connect(self._set_shuffle)
+        self.fs_shuffle.setMinimumSize(56, 56)
+        self.fs_shuffle.setIconSize(QSize(30, 30))
+        ctl.addWidget(self.fs_shuffle)
         self.fs_prev = self._mk_btn(QStyle.SP_MediaSkipBackward,
                                     'Previous', self.prev)
         self.fs_play = self._mk_btn(QStyle.SP_MediaPlay,
@@ -527,6 +561,8 @@ class MainWindow(QMainWindow):
         self.fs_dur.setText(fmt_time(ms))
 
     def _on_state(self, st):
+        if st == QMediaPlayer.PlayingState:
+            self._err_streak = 0
         icon = QStyle.SP_MediaPause if st == QMediaPlayer.PlayingState \
             else QStyle.SP_MediaPlay
         for b in (self.play_btn, self.fs_play):
@@ -536,11 +572,37 @@ class MainWindow(QMainWindow):
         if st == QMediaPlayer.EndOfMedia:
             self.next(auto=True)
 
+    def _check_service(self):
+        """Warn once if Qt has no multimedia backend (missing plugins pkg)."""
+        if self.player.availability() == QMultimedia.ServiceMissing:
+            QMessageBox.warning(
+                self, APP + ' — audio backend missing',
+                'Qt could not find a media player service '
+                '("org.qt-project.qt.mediaplayer"), so nothing can play.\n\n'
+                'Fix it with:\n\n'
+                '  sudo apt install libqt5multimedia5-plugins '
+                'gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly '
+                'gstreamer1.0-libav\n\n'
+                'then restart GNUkeBox.')
+            self.statusBar().showMessage(
+                'Audio backend missing — install '
+                'libqt5multimedia5-plugins (see README)')
+
     def _on_error(self, err):
         if err == QMediaPlayer.NoError:
             return
-        self.statusBar().showMessage(
-            'Playback error: %s' % self.player.errorString())
+        msg = self.player.errorString() or 'playback error'
+        if err == QMediaPlayer.ServiceMissingError:
+            self.statusBar().showMessage('Audio backend missing: ' + msg)
+            self._check_service()
+            return
+        self._err_streak += 1
+        self.statusBar().showMessage('Playback error: %s' % msg)
+        if self._err_streak >= 8:
+            self.statusBar().showMessage(
+                'Too many playback errors — stopped')
+            self.stop()
+            return
         QTimer.singleShot(400, lambda: self.next(auto=True))
 
     def _apply_volume(self, v):
@@ -565,6 +627,7 @@ class MainWindow(QMainWindow):
             self.history.append(self.idx)
             self.history = self.history[-100:]
         self.idx = i
+        self._shuffle_played.add(i)
         d = self.queue[i]
         path = d['path']
         if not os.path.exists(path):
@@ -595,14 +658,18 @@ class MainWindow(QMainWindow):
         if not self.queue:
             return
         if self.shuffle_btn.isChecked():
-            pool = [i for i in range(len(self.queue)) if i != self.idx]
+            pool = [i for i in range(len(self.queue))
+                    if i not in self._shuffle_played]
             if not pool:
                 self._extend_queue()
+                pool = [i for i in range(len(self.queue))
+                        if i not in self._shuffle_played]
+            if not pool:  # whole queue played — start a fresh pass
+                self._shuffle_played = {self.idx}
                 pool = [i for i in range(len(self.queue))
                         if i != self.idx]
             if pool:
                 self.play_index(random.choice(pool))
-                return
             return
         nxt = self.idx + 1
         if nxt >= len(self.queue):
@@ -790,6 +857,7 @@ class MainWindow(QMainWindow):
         self.queue_set = {r['path'] for r in rows}
         self.idx = -1
         self.history.clear()
+        self._shuffle_played.clear()
         self.table.setRowCount(0)
         self._append_rows(rows)
         self.results_lbl.setText(
@@ -858,6 +926,7 @@ class MainWindow(QMainWindow):
     def _clear_playlist(self):
         self.stop()
         self.queue, self.queue_set = [], set()
+        self._shuffle_played.clear()
         self.idx = -1
         self.table.setRowCount(0)
         self.results_lbl.setText('Playlist')
@@ -916,8 +985,15 @@ class MainWindow(QMainWindow):
         else:
             super().keyPressEvent(e)
 
-    def _shuffle_toggled(self, on):
+    def _set_shuffle(self, on):
+        """Keep the browser + fullscreen shuffle buttons in sync."""
+        for b in (self.shuffle_btn, self.fs_shuffle):
+            if b.isChecked() != on:
+                b.blockSignals(True)
+                b.setChecked(on)
+                b.blockSignals(False)
         self.history.clear()
+        self._shuffle_played = {self.idx} if self.idx >= 0 else set()
 
     def closeEvent(self, e):
         if self.scanner and self.scanner.isRunning():

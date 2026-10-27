@@ -10,13 +10,18 @@ with tracks that share artists/genres with what you searched for.
 ## Install
 
 ```
-sudo apt install python3-pyqt5 python3-pyqt5.qtmultimedia python3-mutagen
+sudo apt install python3-pyqt5 python3-pyqt5.qtmultimedia python3-mutagen \
+    libqt5multimedia5-plugins gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-pulseaudio
 ```
 
-That's it — three small packages. QtMultimedia plays through GStreamer,
-so MP3, FLAC, Ogg/Vorbis, Opus, M4A/AAC, WAV, WMA and more work with the
-`gstreamer1.0-plugins-*` packages that Ubuntu/Lubuntu already ship. If a
-format won't play, add `gstreamer1.0-libav`.
+`libqt5multimedia5-plugins` is the part that provides Qt's GStreamer
+playback service — without it you get
+`No service found for "org.qt-project.qt.mediaplayer"` and tracks won't
+play. The `gstreamer1.0-plugins-*` packages cover MP3, FLAC, Ogg/Vorbis,
+Opus, M4A/AAC, WAV, WMA and more; `gstreamer1.0-pulseaudio` is the audio
+output (works with PulseAudio and PipeWire; use `gstreamer1.0-alsa`
+instead on a pure-ALSA setup).
 
 ## Run
 
