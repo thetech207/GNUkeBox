@@ -478,8 +478,11 @@ class MainWindow(QMainWindow):
         self.fs_art = QLabel()
         self.fs_art.setObjectName('artBig')
         self.fs_art.setAlignment(Qt.AlignCenter)
-        self.fs_art.setSizePolicy(QSizePolicy.Expanding,
-                                  QSizePolicy.Expanding)
+        # Ignored policy: a big pixmap must never inflate the window's
+        # size hint or it can't shrink back after fullscreen.
+        self.fs_art.setSizePolicy(QSizePolicy.Ignored,
+                                  QSizePolicy.Ignored)
+        self.fs_art.setMinimumSize(0, 0)
         v.addWidget(self.fs_art, 1)
 
         self.fs_title = QLabel('Nothing playing')
@@ -946,6 +949,8 @@ class MainWindow(QMainWindow):
             return
         self._in_fs = True
         self._fs_guard = True
+        # remember the pre-fullscreen (windowed) geometry to restore to
+        self._pre_fs_geom = self.normalGeometry()
         self.stack.setCurrentIndex(1)
         self._fs_art_scale()
         self.showFullScreen()
@@ -958,6 +963,9 @@ class MainWindow(QMainWindow):
         self._fs_guard = True
         self.stack.setCurrentIndex(0)
         self.showNormal()
+        g = getattr(self, '_pre_fs_geom', None)
+        if g is not None and g.isValid():
+            self.setGeometry(g)
         QTimer.singleShot(400, lambda: setattr(self, '_fs_guard', False))
 
     def changeEvent(self, e):
@@ -1001,7 +1009,8 @@ class MainWindow(QMainWindow):
             self.scanner.wait(3000)
         self.cfg['volume'] = self.vol.value()
         self.cfg['shuffle'] = self.shuffle_btn.isChecked()
-        self.cfg['w'], self.cfg['h'] = self.width(), self.height()
+        g = self.normalGeometry()
+        self.cfg['w'], self.cfg['h'] = g.width(), g.height()
         save_config(self.cfg)
         e.accept()
 
