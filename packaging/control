@@ -1,0 +1,26 @@
+Package: gnukebox
+Version: @VERSION@
+Section: sound
+Priority: optional
+Architecture: all
+Maintainer: thetech207 <https://github.com/thetech207/GNUkeBox>
+Depends: python3 (>= 3.8),
+         python3-pyqt5,
+         python3-pyqt5.qtmultimedia,
+         python3-mutagen,
+         libqt5multimedia5-plugins,
+         gstreamer1.0-plugins-good,
+         gstreamer1.0-plugins-ugly,
+         gstreamer1.0-libav,
+         gstreamer1.0-pulseaudio | gstreamer1.0-alsa
+Homepage: https://github.com/thetech207/GNUkeBox
+Description: search-driven jukebox for large music collections
+ A PyQt5 + GStreamer music player. It indexes your music folders into a
+ SQLite library (ID3v1/v2, Vorbis/FLAC, MP4 and WMA tags), lets you build
+ playlists by typing into tag fields (title, artist, album, year, genre,
+ track, comment), and plays unattended — at playlist end it continues
+ with tracks sharing the artists/genres you searched for. Includes a
+ full-screen now-playing view and a dark theme.
+ .
+ Plays MP3, FLAC, Ogg/Vorbis, Opus, M4A/AAC, WAV, WMA and more through
+ GStreamer.

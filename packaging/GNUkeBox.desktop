@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=GNUkeBox
+Comment=Search-driven jukebox for your music collection
+Exec=gnukebox
+Icon=gnukebox
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=music;audio;player;jukebox;mp3;flac;
+StartupNotify=true

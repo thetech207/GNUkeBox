@@ -7,7 +7,20 @@ the classic ID3v1 set, plus "search everything"), hit Search, and it
 builds a playlist and just plays. When the playlist ends it keeps going
 with tracks that share artists/genres with what you searched for.
 
-## Install
+## Install (.deb — easiest)
+
+Download `gnukebox_*_all.deb` from the
+[Releases](https://github.com/thetech207/GNUkeBox/releases) page and:
+
+```
+sudo apt install ./gnukebox_*_all.deb
+```
+
+All dependencies resolve automatically, and you get a **GNUkeBox** entry
+in your app menu. Or build the package yourself: `./build-deb.sh`
+(needs only `dpkg-deb`, already on every Debian system).
+
+## Install (from source)
 
 ```
 sudo apt install python3-pyqt5 python3-pyqt5.qtmultimedia python3-mutagen \
