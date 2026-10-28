@@ -24,7 +24,8 @@ from PyQt5.QtWidgets import (QAbstractItemView, QApplication, QCheckBox,
                              QCompleter, QFileDialog, QFrame, QGroupBox,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit,
                              QListWidget, QMainWindow, QMenu, QMessageBox,
-                             QPushButton, QSizePolicy, QSlider, QSplitter,
+                             QPushButton, QShortcut, QSizePolicy, QSlider,
+                             QSplitter,
                              QStackedWidget, QStyle, QTableWidget,
                              QTableWidgetItem, QToolButton, QVBoxLayout,
                              QWidget)
@@ -236,6 +237,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self._build_browser_page())
         self.stack.addWidget(self._build_fullscreen_page())
         self.setCentralWidget(self.stack)
+        self._wire_shortcuts()
         self.statusBar().showMessage('Ready — %d tracks indexed'
                                      % self.lib.count())
 
@@ -966,6 +968,8 @@ class MainWindow(QMainWindow):
         g = getattr(self, '_pre_fs_geom', None)
         if g is not None and g.isValid():
             self.setGeometry(g)
+        self.raise_()
+        self.activateWindow()
         QTimer.singleShot(500, self._end_fs_transition)
 
     def _end_fs_transition(self):
@@ -978,6 +982,37 @@ class MainWindow(QMainWindow):
                 self.showFullScreen()
         elif self.windowState() & Qt.WindowFullScreen:
             self.showNormal()
+
+    def _wire_shortcuts(self):
+        """Window-scoped shortcuts — reliable regardless of which child
+        widget holds focus (plain keyPressEvent propagation isn't)."""
+        sc = QShortcut(QKeySequence(Qt.Key_F11), self)
+        sc.setContext(Qt.WindowShortcut)
+        sc.activated.connect(self._toggle_fullscreen)
+        sc = QShortcut(QKeySequence(Qt.Key_Escape), self)
+        sc.setContext(Qt.WindowShortcut)
+        sc.activated.connect(self._esc_fullscreen)
+        sc = QShortcut(QKeySequence.Find, self)
+        sc.setContext(Qt.WindowShortcut)
+        sc.activated.connect(self._focus_search)
+
+    def _toggle_fullscreen(self):
+        if self._fs_guard:
+            return
+        if self._in_fs:
+            self.exit_fullscreen()
+        else:
+            self.enter_fullscreen()
+
+    def _esc_fullscreen(self):
+        if self._in_fs and not self._fs_guard:
+            self.exit_fullscreen()
+
+    def _focus_search(self):
+        if self._in_fs:
+            self.exit_fullscreen()
+        self.any_edit.setFocus()
+        self.any_edit.selectAll()
 
     def changeEvent(self, e):
         if e.type() == QEvent.WindowStateChange and not self._fs_guard:
@@ -1005,10 +1040,7 @@ class MainWindow(QMainWindow):
         elif e.matches(QKeySequence.Find) or \
                 (e.modifiers() == Qt.ControlModifier
                  and e.key() == Qt.Key_Slash):
-            if self._in_fs:
-                self.exit_fullscreen()
-            self.any_edit.setFocus()
-            self.any_edit.selectAll()
+            self._focus_search()
         else:
             super().keyPressEvent(e)
 
