@@ -945,7 +945,7 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------- fullscreen
     def enter_fullscreen(self):
-        if self._in_fs:
+        if self._in_fs or self._fs_guard:
             return
         self._in_fs = True
         self._fs_guard = True
@@ -954,10 +954,10 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(1)
         self._fs_art_scale()
         self.showFullScreen()
-        QTimer.singleShot(400, lambda: setattr(self, '_fs_guard', False))
+        QTimer.singleShot(500, self._end_fs_transition)
 
     def exit_fullscreen(self):
-        if not self._in_fs:
+        if not self._in_fs or self._fs_guard:
             return
         self._in_fs = False
         self._fs_guard = True
@@ -966,16 +966,35 @@ class MainWindow(QMainWindow):
         g = getattr(self, '_pre_fs_geom', None)
         if g is not None and g.isValid():
             self.setGeometry(g)
-        QTimer.singleShot(400, lambda: setattr(self, '_fs_guard', False))
+        QTimer.singleShot(500, self._end_fs_transition)
+
+    def _end_fs_transition(self):
+        """After a transition settles, make sure reality matches intent —
+        some WMs report odd states or drop fullscreen requests."""
+        self._fs_guard = False
+        self.stack.setCurrentIndex(1 if self._in_fs else 0)
+        if self._in_fs:
+            if not (self.windowState() & Qt.WindowFullScreen):
+                self.showFullScreen()
+        elif self.windowState() & Qt.WindowFullScreen:
+            self.showNormal()
 
     def changeEvent(self, e):
         if e.type() == QEvent.WindowStateChange and not self._fs_guard:
-            if (self.windowState() & Qt.WindowMaximized) and \
-                    not self._in_fs:
+            ws = self.windowState()
+            if self._in_fs and not (ws & Qt.WindowFullScreen):
+                # the window manager itself pulled us out of fullscreen
+                self._in_fs = False
+                self.stack.setCurrentIndex(0)
+            elif not self._in_fs and (ws & Qt.WindowMaximized) \
+                    and not (ws & Qt.WindowFullScreen):
                 self.enter_fullscreen()
         super().changeEvent(e)
 
     def keyPressEvent(self, e):
+        if e.isAutoRepeat() or self._fs_guard:
+            if e.key() in (Qt.Key_F11, Qt.Key_Escape):
+                return
         if e.key() == Qt.Key_F11:
             if self._in_fs:
                 self.exit_fullscreen()
